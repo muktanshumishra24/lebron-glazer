@@ -17,6 +17,7 @@ interface SetupModalProps {
 type SetupStep = 'mode' | 'proxy' | 'approvals' | 'balance' | 'apikey-only' | 'complete'
 
 export function SetupModal({ isOpen, onClose, onComplete }: SetupModalProps) {
+  const [mounted, setMounted] = useState(false)
   const { address } = useAccount()
   const { data: walletClient } = useWalletClient()
   const [mode, setMode] = useState<'eoa' | 'scw'>('scw')
@@ -25,13 +26,15 @@ export function SetupModal({ isOpen, onClose, onComplete }: SetupModalProps) {
   const [error, setError] = useState<string | null>(null)
   const [proxyAddress, setProxyAddress] = useState<string | null>(null)
   const [progress, setProgress] = useState<string>('')
-  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
     setMounted(true)
   }, [])
 
-  if (!mounted || !isOpen) return null
+  // Don't render until mounted to prevent hydration issues
+  if (!mounted) return null
+  
+  if (!isOpen) return null
 
   async function handleCreateApiKeyOnly() {
     console.log('[API_KEY] Starting API key creation flow...')

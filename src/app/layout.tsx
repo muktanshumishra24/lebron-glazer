@@ -6,6 +6,9 @@ import { Providers } from '../lib/providers'
 export const metadata: Metadata = {
   title: 'Delusio!',
   description: 'Betting on Delusions',
+  icons: {
+    icon: '/leb.png',
+  },
 }
 
 export default function RootLayout({
@@ -14,8 +17,8 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
-      <body>
+    <html lang="en" suppressHydrationWarning>
+      <body suppressHydrationWarning>
         <Providers>
           <Navigation />
           {children}

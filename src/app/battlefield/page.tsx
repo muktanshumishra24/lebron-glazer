@@ -133,11 +133,9 @@ export default function BattlefieldPage() {
       <div className="max-w-7xl mx-auto px-4">
         {/* Header */}
         <div className="my-10">
-          <h1 className="text-4xl md:text-6xl font-black uppercase tracking-tighter mb-4">
-            <span className="bg-gradient-to-r from-lakers-gold via-white to-lakers-gold bg-clip-text text-transparent">
+            <h1 className="text-4xl md:text-6xl font-black uppercase tracking-tighter mb-4 text-lakers-gold">
               THE BATTLEFIELD
-            </span>
-          </h1>
+            </h1>
           <p className="text-gray-400 uppercase tracking-wider">Active Positions & Open Orders</p>
         </div>
 

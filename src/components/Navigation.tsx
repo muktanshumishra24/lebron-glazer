@@ -10,6 +10,7 @@ import { checkBalanceAction } from '../app/actions'
 import { getLALStanding } from '../config/nba-standings'
 
 export function Navigation() {
+  const [mounted, setMounted] = useState(false)
   const pathname = usePathname()
   const { address, isConnected } = useAccount()
   const [balance, setBalance] = useState<number | null>(null)
@@ -17,12 +18,21 @@ export function Navigation() {
   const [setupModalOpen, setSetupModalOpen] = useState(false)
 
   useEffect(() => {
-    if (isConnected && address) {
+    setMounted(true)
+    // #region agent log
+    if (typeof window !== 'undefined') {
+      fetch('http://127.0.0.1:7244/ingest/aaa7f80b-2477-4b58-bbd9-5c137396a9f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Navigation.tsx:20',message:'Component mounted - client side',data:{mounted:true,isConnected,hasAddress:!!address},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    }
+    // #endregion
+  }, [])
+
+  useEffect(() => {
+    if (mounted && isConnected && address) {
       loadBalance()
     } else {
       setBalance(null)
     }
-  }, [isConnected, address])
+  }, [mounted, isConnected, address])
 
   async function loadBalance() {
     if (!address) return
@@ -47,7 +57,7 @@ export function Navigation() {
   ]
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-black/75 backdrop-blur-sm border-b border-white/10">
+    <nav className="fixed top-0 left-0 right-0 z-50 bg-black/75 backdrop-blur-sm border-b border-white/10" suppressHydrationWarning>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex items-center">
@@ -71,14 +81,14 @@ export function Navigation() {
             </div>
           </div>
           <div className="flex items-center gap-4">
-            {/* Low Profile Stats */}
-            {isConnected && (
+            {/* Low Profile Stats - Only render after mount to prevent hydration issues */}
+            {mounted && isConnected && (
               <div className="hidden md:flex items-center gap-4 text-xs text-gray-400">
-                {balance !== null && (
+                {balance !== null && !balanceLoading && (
                   <div className="flex items-center gap-1">
                     <span className="text-gray-500">USDT:</span>
                     <span className="text-lakers-gold/70 font-mono">
-                      {balanceLoading ? '...' : balance.toFixed(2)}
+                      {balance.toFixed(2)}
                     </span>
                   </div>
                 )}
@@ -90,7 +100,7 @@ export function Navigation() {
                 )}
               </div>
             )}
-            {isConnected && (
+            {mounted && isConnected && (
               <button
                 onClick={() => setSetupModalOpen(true)}
                 className="px-4 py-2 text-xs font-medium uppercase tracking-wide

@@ -35,7 +35,7 @@ export default function GlazePage() {
   const [markets, setMarkets] = useState<Market[]>([])
   const [selectedMarket, setSelectedMarket] = useState<Market | null>(null)
   const [marketsLoading, setMarketsLoading] = useState(false)
-  const [standingsOpen, setStandingsOpen] = useState(false)
+  // Standings sidebar is now always visible, no state needed
   const [commandCenterOpen, setCommandCenterOpen] = useState(false)
   const [commandCenterTheme, setCommandCenterTheme] = useState<'enemy-red' | 'lakers-gold'>('lakers-gold')
 
@@ -57,7 +57,7 @@ export default function GlazePage() {
 
   useEffect(() => {
     if (isConnected && address && walletClient) {
-      initialize()
+    initialize()
     }
   }, [isConnected, address, walletClient])
 
@@ -304,9 +304,9 @@ export default function GlazePage() {
 
   return (
     <div className="min-h-screen bg-black py-4 relative">
-      <div className="max-w-7xl mx-auto px-4 flex gap-6 mt-4">
+      <div className="max-w-[1600px] mx-auto px-4 flex gap-6 mt-14">
         {/* Main Content */}
-        <div className={standingsOpen ? 'flex-1 transition-all duration-300 mr-80' : 'flex-1 transition-all duration-300'}>
+        <div className="flex-1 transition-all duration-300">
           <HeroSection />
 
           <ErrorDisplay error={error} />
@@ -329,7 +329,7 @@ export default function GlazePage() {
                 apiKey={apiKey}
                 loading={loading}
               />
-            </div>
+        </div>
 
             {/* Bottom Row: Fraud Markets */}
             <div>
@@ -354,15 +354,15 @@ export default function GlazePage() {
                     const noToken = market.tokens.find(t => t.outcome === 'No')
                     const outcomes = parseOutcomes(market.outcomes)
                     const outcomeTokenMap = getOutcomeTokenMap(market)
-
-                    if (yesToken && noToken) {
+                              
+                              if (yesToken && noToken) {
                       return true // Has Yes/No tokens
                     }
 
-                    const lalOutcome = outcomes.find(outcome =>
-                      outcome.toLowerCase().includes('lal') ||
-                      outcome.toLowerCase().includes('los angeles') ||
-                      outcome.toLowerCase().includes('lakers')
+                  const lalOutcome = outcomes.find(outcome => 
+                    outcome.toLowerCase().includes('lal') ||
+                    outcome.toLowerCase().includes('los angeles') ||
+                    outcome.toLowerCase().includes('lakers')
                     )
                     if (lalOutcome) {
                       return !!outcomeTokenMap.get(lalOutcome)
@@ -375,11 +375,14 @@ export default function GlazePage() {
           </div>
         </div>
 
-        <StandingsSidebar
-          isOpen={standingsOpen}
-          onClose={() => setStandingsOpen(false)}
-          onToggle={() => setStandingsOpen(!standingsOpen)}
-        />
+        {/* Standings Sidebar - Always Visible on Right */}
+        <div className="w-72 flex-shrink-0">
+          <StandingsSidebar
+            isOpen={true}
+            onClose={() => {}}
+            onToggle={() => {}}
+          />
+        </div>
       </div>
 
       {/* Command Center Modal */}
