@@ -132,7 +132,7 @@ export default function BattlefieldPage() {
     <div className="min-h-screen bg-black py-8">
       <div className="max-w-7xl mx-auto px-4">
         {/* Header */}
-        <div className="mb-8">
+        <div className="my-10">
           <h1 className="text-4xl md:text-6xl font-black uppercase tracking-tighter mb-4">
             <span className="bg-gradient-to-r from-lakers-gold via-white to-lakers-gold bg-clip-text text-transparent">
               THE BATTLEFIELD

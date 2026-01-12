@@ -11,7 +11,7 @@ import {
 } from '../actions'
 import { getApiKey } from '../../lib/api-key'
 import { getOpenOrdersWithApiKey, placeOrderWithApiKey } from '../../lib/orders'
-import { filterMarketsByDescription, sortMarketsWithLALFirst, getTokenIdForOutcome } from '../../lib/markets'
+import { filterMarketsByDescription, sortMarketsWithLALFirst, getTokenIdForOutcome, findTeamMarkets, parseOutcomes, getOutcomeTokenMap } from '../../lib/markets'
 import type { PlaceOrderParams, ApiOrder } from '../../lib/orders'
 import type { Market } from '../../lib/markets'
 import { Side } from '../../types'
@@ -303,8 +303,8 @@ export default function GlazePage() {
   }
 
   return (
-    <div className="min-h-screen bg-black py-8 relative">
-      <div className="max-w-7xl mx-auto px-4 flex gap-6 mt-10">
+    <div className="min-h-screen bg-black py-4 relative">
+      <div className="max-w-7xl mx-auto px-4 flex gap-6 mt-4">
         {/* Main Content */}
         <div className={standingsOpen ? 'flex-1 transition-all duration-300 mr-80' : 'flex-1 transition-all duration-300'}>
           <HeroSection />
@@ -312,7 +312,7 @@ export default function GlazePage() {
           <ErrorDisplay error={error} />
 
           {/* Two Rows: LAL on top, Frauds on bottom */}
-          <div className="space-y-6">
+          <div className="space-y-4">
             {/* Top Row: LAL Markets */}
             <div>
               <TrustTheKingCard
@@ -346,6 +346,30 @@ export default function GlazePage() {
                 onPlaceOrder={handlePlaceOrder}
                 apiKey={apiKey}
                 loading={loading}
+                excludeMarketIds={(() => {
+                  // Get LAL market IDs that are shown in TrustTheKingCard (same filtering logic)
+                  const lalMarkets = findTeamMarkets(markets, 'LAL')
+                  return lalMarkets.filter((market: Market) => {
+                    const yesToken = market.tokens.find(t => t.outcome === 'Yes')
+                    const noToken = market.tokens.find(t => t.outcome === 'No')
+                    const outcomes = parseOutcomes(market.outcomes)
+                    const outcomeTokenMap = getOutcomeTokenMap(market)
+
+                    if (yesToken && noToken) {
+                      return true // Has Yes/No tokens
+                    }
+
+                    const lalOutcome = outcomes.find(outcome =>
+                      outcome.toLowerCase().includes('lal') ||
+                      outcome.toLowerCase().includes('los angeles') ||
+                      outcome.toLowerCase().includes('lakers')
+                    )
+                    if (lalOutcome) {
+                      return !!outcomeTokenMap.get(lalOutcome)
+                    }
+                    return false
+                  }).map(m => m.id)
+                })()}
               />
             </div>
           </div>

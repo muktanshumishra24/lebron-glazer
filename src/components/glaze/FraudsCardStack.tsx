@@ -13,6 +13,7 @@ interface FraudsCardStackProps {
   onPlaceOrder: () => void
   apiKey: any
   loading: boolean
+  excludeMarketIds?: string[] // Market IDs to exclude (e.g., LAL markets already shown)
 }
 
 export function FraudsCardStack({
@@ -22,12 +23,14 @@ export function FraudsCardStack({
   onPlaceOrder,
   apiKey,
   loading,
+  excludeMarketIds = [],
 }: FraudsCardStackProps) {
   const teamsAboveLAL = getTeamsAboveLAL()
   
   // Collect all fraud markets: 
   // 1. Markets where LAL competes against teams ranked above LAL (betting on LAL = shorting the fraud)
   // 2. Markets where two teams ranked above LAL compete (can short either)
+  // NOTE: Exclude markets already shown in LAL section to avoid duplicates
   const allFraudMarkets: Array<{
     market: Market
     type: 'lal-vs-fraud' | 'fraud-vs-fraud'
@@ -36,6 +39,10 @@ export function FraudsCardStack({
   }> = []
 
   markets.forEach(market => {
+    // Skip markets that are already shown in the LAL section
+    if (excludeMarketIds.includes(market.id)) {
+      return
+    }
     const outcomes = parseOutcomes(market.outcomes)
     const marketText = `${market.description} ${market.question}`.toLowerCase()
     
@@ -127,7 +134,7 @@ export function FraudsCardStack({
 
   return (
     <div>
-      <div className="mb-4">
+      <div className="mb-3">
         <h4 className="font-bold text-lg uppercase tracking-tight text-enemy-red">
           FRAUDS
         </h4>
@@ -137,7 +144,7 @@ export function FraudsCardStack({
       </div>
 
       {/* Fraud Markets - Small Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         {validFraudMarkets.map(({ market, type, team1, team2 }, index) => {
           const outcomes = parseOutcomes(market.outcomes)
           const outcomeTokenMap = getOutcomeTokenMap(market)

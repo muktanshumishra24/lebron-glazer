@@ -68,7 +68,7 @@ export function TrustTheKingCard({
 
   return (
     <div>
-      <div className="mb-4">
+      <div className="mb-3">
         <h4 className="font-bold text-lg uppercase tracking-tight text-lakers-gold">
           LAL - LOS ANGELES LAKERS
         </h4>
@@ -78,7 +78,7 @@ export function TrustTheKingCard({
       </div>
 
       {/* LAL Markets - Small Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         {filteredLALMarkets.map((market) => {
           const yesToken = market.tokens.find(t => t.outcome === 'Yes')
           const noToken = market.tokens.find(t => t.outcome === 'No')

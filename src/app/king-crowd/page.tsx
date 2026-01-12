@@ -70,7 +70,7 @@ export default function KingCrowdPage() {
     <div className="min-h-screen bg-black py-8">
       <div className="max-w-7xl mx-auto px-4">
         {/* Markets Section - King & Crowd */}
-        <div className="mt-8">
+        <div className="mt-10">
           <div className="flex justify-between items-center mb-6">
             <div>
               <h2 className="text-3xl font-black uppercase tracking-tighter text-lakers-gold">
