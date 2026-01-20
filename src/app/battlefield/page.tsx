@@ -13,6 +13,7 @@ import {
   fetchAllMarketsAction,
 } from '../../lib/actions'
 import { getOpenOrdersWithApiKey } from '../../lib/orders'
+import { createOrLoadApiKey } from '../../lib/api'
 import type { ApiOrder, Position, Market, PnLData } from '../../types'
 
 export default function BattlefieldPage() {
@@ -52,24 +53,43 @@ export default function BattlefieldPage() {
   }, [mounted, isConnected, address, apiKey, markets]) // Added markets dependency
 
   async function initialize() {
-    if (!address) return
+    if (!address || !walletClient) return
+    
+    console.log('=== INITIALIZE CALLED ===');
+    console.log('User Address:', address);
     
     try {
       // Check for proxy
       const proxyResult = await checkProxyWalletAction(address as `0x${string}`)
+      
+      let detectedProxyAddress: string | null = null;
+      let detectedMode: 'proxy' | 'eoa' = 'eoa';
+      
       if (proxyResult.exists) {
+        detectedProxyAddress = proxyResult.address;
+        detectedMode = 'proxy';
         setProxyAddress(proxyResult.address)
         setMode('proxy')
       } else {
         setMode('eoa')
       }
 
-      // Load API key
-      const key = await getApiKeyAction()
+      // Load or create API key automatically (client-side to avoid passing walletClient to server)
+      let key = await getApiKeyAction();
+      
+      if (!key && walletClient) {
+        try {
+          // Call createOrLoadApiKey directly on client side
+          const result = await createOrLoadApiKey(walletClient, address as `0x${string}`, false);
+          key = result.apiKey;
+        } catch (err) {
+          console.error('Failed to create API key:', err);
+        }
+      }
+      
       setApiKey(key)
 
       // Load markets (fetch ALL active and inactive to support resolved positions)
-      // fetchAllMarkets(false) might return ONLY inactive, so we fetch both and merge
       const [activeMarkets, inactiveMarkets] = await Promise.all([
         fetchAllMarketsAction(true),
         fetchAllMarketsAction(false)
@@ -83,36 +103,44 @@ export default function BattlefieldPage() {
       const allMarkets = Array.from(marketMap.values())
       setMarkets(allMarkets)
 
-      // Load data
-      await refreshData(allMarkets)
+      // Load data - pass the detected proxy address directly to avoid state timing issues
+      await refreshData(allMarkets, key, detectedProxyAddress, detectedMode)
     } catch (err: any) {
+      console.error('Initialize error:', err);
       setError(err.message)
     }
   }
 
-  async function refreshData(currentMarkets?: Market[]) {
+  async function refreshData(currentMarkets?: Market[], currentApiKey?: any, currentProxyAddress?: string | null, currentMode?: 'proxy' | 'eoa') {
     if (!address || !walletClient) return
     
+    // Use passed parameters if available, otherwise fall back to state
+    const useApiKey = currentApiKey || apiKey;
+    const useProxyAddress = currentProxyAddress !== undefined ? currentProxyAddress : proxyAddress;
+    const useMode = currentMode || mode;
+    
     // Refresh orders
-    if (apiKey) {
+    if (useApiKey) {
       await refreshOrders()
     }
 
     // Refresh positions
     try {
       const marketsToUse = currentMarkets || markets
+      
       // We need markets to map IDs, but if empty we might still want to try? 
       // Actually getPositions requires markets for metadata.
       if (marketsToUse.length === 0) return
 
-      const tradingAddress = mode === 'proxy' && proxyAddress ? proxyAddress : address
-      if (apiKey) {
-          const pos = await getPositionsAction(tradingAddress as `0x${string}`, apiKey, marketsToUse)
+      const tradingAddress = useMode === 'proxy' && useProxyAddress ? useProxyAddress : address
+      
+      if (useApiKey) {
+          const pos = await getPositionsAction(tradingAddress as `0x${string}`, useApiKey, marketsToUse)
           setPositions(pos)
           
           // Fetch PnL data
           try {
-            const pnl = await getPnLAction(tradingAddress as `0x${string}`, apiKey)
+            const pnl = await getPnLAction(tradingAddress as `0x${string}`, useApiKey)
             setPnlData(pnl)
           } catch (err: any) {
             console.error('Failed to load PnL:', err)
@@ -251,16 +279,22 @@ export default function BattlefieldPage() {
             </p>
           </div>
           <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-lg p-6">
-            <h3 className="text-gray-400 text-sm uppercase tracking-wider mb-2">Total PnL</h3>
+            <div className="flex justify-between items-start mb-2">
+              <h3 className="text-gray-400 text-sm uppercase tracking-wider">Total PnL</h3>
+              {pnlData && (
+                <div className="flex gap-2">
+                  <div className={`text-[10px] px-2 py-0.5 rounded border ${pnlData.realizedPnl >= 0 ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}>
+                    REALIZED: ${pnlData.realizedPnl.toFixed(2)}
+                  </div>
+                  <div className={`text-[10px] px-2 py-0.5 rounded border ${pnlData.unrealizedPnl >= 0 ? 'bg-blue-500/10 border-blue-500/30 text-blue-400' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}>
+                    UNREALIZED: ${pnlData.unrealizedPnl.toFixed(2)}
+                  </div>
+                </div>
+              )}
+            </div>
             <p className={`text-4xl font-black font-mono ${displayPnL >= 0 ? 'text-green-500' : 'text-enemy-red'}`}>
               {displayPnL >= 0 ? '+' : ''}${Math.abs(displayPnL).toFixed(2)}
             </p>
-            {pnlData && (
-              <div className="mt-2 text-xs text-gray-500">
-                <div>Realized: ${pnlData.realizedPnl.toFixed(2)}</div>
-                <div>Unrealized: ${pnlData.unrealizedPnl.toFixed(2)}</div>
-              </div>
-            )}
           </div>
           <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-lg p-6">
             <h3 className="text-gray-400 text-sm uppercase tracking-wider mb-2">Active Positions</h3>

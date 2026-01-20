@@ -732,41 +732,58 @@ export async function getPositions(
   const response = await axios.get(url, { headers });
   const rawPositions = (response.data?.positions || response.data || []) as any[];
 
+  console.log('=== POSITIONS API RESPONSE ===');
+  console.log('URL:', url);
+  console.log('User Address:', address);
+  console.log('Raw Response:', response.data);
+  console.log('Raw Positions Count:', rawPositions.length);
+  console.log('Raw Positions:', rawPositions);
+
   const positions: Position[] = [];
 
   for (const raw of rawPositions) {
+    // API returns: asset, conditionId, size, avgPrice, currentValue, outcome, title, slug, etc.
     const size = Number(raw.size || raw.balance || 0);
-    // Determine tokenId. API may return it as `tokenId` or `assetId` or `instrumentId`
-    const tokenId = raw.tokenId || raw.tokenID || raw.instrumentId || raw.ctfTokenId;
     
-    if (size > 0 && tokenId) {
-      let marketId = raw.marketId;
-      let outcome = raw.outcome;
-
-      // If we have markets and missing info, try to find it
-      if (markets.length > 0 && (!marketId || !outcome)) {
-        for (const market of markets) {
-          if (!market.tokens) continue;
-          const token = market.tokens.find(t => t.token_id === tokenId);
-          if (token) {
-            marketId = market.id;
-            outcome = token.outcome;
-            break;
+    if (size > 0) {
+      // Try to find market by slug or title
+      let marketId = 'unknown';
+      let tokenId = raw.asset || raw.conditionId || raw.tokenId || raw.tokenID || 'unknown';
+      let outcome = raw.outcome || 'Unknown';
+      
+      if (markets.length > 0 && (raw.slug || raw.eventSlug || raw.title)) {
+        // Try to find market by question/title since Market type doesn't have slug
+        const market = markets.find(m => 
+          m.question === raw.title ||
+          m.question?.toLowerCase().includes(raw.slug?.toLowerCase()) ||
+          m.question?.toLowerCase().includes(raw.eventSlug?.toLowerCase())
+        );
+        if (market) {
+          marketId = market.id;
+          // Try to find the specific token for this outcome
+          if (market.tokens && raw.outcome) {
+            const token = market.tokens.find(t => t.outcome === raw.outcome);
+            if (token) {
+              tokenId = token.token_id;
+            }
           }
         }
       }
 
       positions.push({
-        id: raw.id || String(Math.random()),
-        marketId: marketId || 'unknown',
+        id: raw.asset || raw.conditionId || String(Math.random()),
+        marketId: marketId,
         tokenId: tokenId,
-        outcome: outcome || 'Unknown',
+        outcome: outcome,
         balance: size,
-        price: Number(raw.price || raw.averagePrice || 0),
-        value: Number(raw.value || 0),
+        price: Number(raw.avgPrice || raw.curPrice || raw.price || raw.averagePrice || 0),
+        value: Number(raw.currentValue || raw.value || 0),
       });
     }
   }
+
+  console.log('Parsed positions:', positions.length);
+  console.log('Positions:', positions);
 
   return positions;
 }
@@ -803,14 +820,27 @@ export async function getPnL(
   );
 
   const response = await axios.get(url, { headers });
-  const data = response.data || {};
+  const rawData = response.data || [];
+
+  console.log('=== PNL API RESPONSE ===');
+  console.log('URL:', url);
+  console.log('User Address:', address);
+  console.log('Raw Response:', rawData);
+
+  // API returns array of time-series data: [{t: timestamp, p: pnl}, ...]
+  // Get the latest PnL value
+  let totalPnl = 0;
+  if (Array.isArray(rawData) && rawData.length > 0) {
+    const latest = rawData[rawData.length - 1];
+    totalPnl = Number(latest.p || 0);
+  }
 
   return {
-    totalPnl: Number(data.total_pnl || data.totalPnl || 0),
-    realizedPnl: Number(data.realized_pnl || data.realizedPnl || 0),
-    unrealizedPnl: Number(data.unrealized_pnl || data.unrealizedPnl || 0),
-    totalVolume: Number(data.total_volume || data.totalVolume || 0),
-    totalFees: Number(data.total_fees || data.totalFees || 0),
+    totalPnl: totalPnl,
+    realizedPnl: totalPnl, // API doesn't separate realized/unrealized in this endpoint
+    unrealizedPnl: 0,
+    totalVolume: 0,
+    totalFees: 0,
   };
 }
 
