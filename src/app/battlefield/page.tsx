@@ -11,6 +11,7 @@ import {
   getPositionsAction,
   getPnLAction,
   fetchAllMarketsAction,
+  getOpenOrdersAction,
 } from '../../lib/actions'
 import { getOpenOrdersWithApiKey } from '../../lib/orders'
 import { createOrLoadApiKey } from '../../lib/api'
@@ -158,10 +159,11 @@ export default function BattlefieldPage() {
       const tradingAddress = mode === 'proxy' && proxyAddress ? proxyAddress : address
       if (!tradingAddress) return
 
-      const ordersResult = await getOpenOrdersWithApiKey(
+      // Use server action to avoid CORS issues
+      const ordersResult = await getOpenOrdersAction(
         tradingAddress as `0x${string}`,
+        apiKey,
         address as `0x${string}`,
-        walletClient,
         mode === 'eoa' ? 'eoa' : undefined,
       )
       setOrders(ordersResult.orders)

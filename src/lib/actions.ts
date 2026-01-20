@@ -57,7 +57,12 @@ export async function getOpenOrdersAction(
   page: number = 1,
   limit: number = 20,
 ) {
-  return await getOpenOrders(address, apiKey, eoaAddress, accountType, page, limit)
+  try {
+    return await getOpenOrders(address, apiKey, eoaAddress, accountType, page, limit)
+  } catch (error) {
+    console.error('Error fetching open orders (server action):', error)
+    return { orders: [], total: 0, page, limit }
+  }
 }
 
 export async function cancelOrderAction(
@@ -94,7 +99,12 @@ export async function getPositionsAction(
   apiKey: ApiKeyCreds,
   markets: Market[],
 ): Promise<Position[]> {
-  return await getPositions(address, apiKey, markets)
+  try {
+    return await getPositions(address, apiKey, markets)
+  } catch (error) {
+    console.error('Error fetching positions (server action):', error)
+    return []
+  }
 }
 
 export async function getPnLAction(
