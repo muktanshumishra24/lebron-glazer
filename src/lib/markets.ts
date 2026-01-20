@@ -1,55 +1,7 @@
 import axios from 'axios';
+import type { MarketToken, Market, MarketsResponse } from '../types';
 
-/**
- * Market token information
- */
-export interface MarketToken {
-  token_id: string;
-  outcome: string;
-}
 
-/**
- * Market information from the API
- */
-export interface Market {
-  id: string;
-  condition_id: string;
-  question: string;
-  question_id: string;
-  market_slug: string;
-  outcomes: string; // JSON string array
-  volume24hr: string;
-  liquidity: string;
-  clobTokenIds: string; // JSON string array
-  active: boolean;
-  closed: boolean;
-  archived: boolean;
-  startDate: string;
-  endDate: string;
-  tokens: MarketToken[];
-  icon?: string;
-  description: string;
-  tags: string[];
-  groupItemTitle: string;
-  resolved: boolean;
-  liveness: string;
-  disputed: boolean;
-}
-
-/**
- * Markets API response
- */
-export interface MarketsResponse {
-  markets: Market[];
-  pagination?: {
-    page: number;
-    limit: number;
-    totalResults: number;
-    totalPages: number;
-    hasMore: boolean;
-    hasPrevPage: boolean;
-  };
-}
 
 /**
  * Fetch active markets from the API

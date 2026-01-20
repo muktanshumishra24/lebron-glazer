@@ -1,6 +1,6 @@
 'use client'
 
-import { WESTERN_CONFERENCE_STANDINGS, getTeamsAboveLAL } from '../../config/nba-standings'
+import { WESTERN_CONFERENCE_STANDINGS, getTeamsAboveLAL } from '../config/nba-standings'
 
 interface StandingsSidebarProps {
   isOpen: boolean

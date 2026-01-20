@@ -8,9 +8,12 @@ import {
   cancelOrderAction,
   cancelOrdersAction,
   getApiKeyAction,
-} from '../actions'
+  getPositionsAction,
+  getPnLAction,
+  fetchAllMarketsAction,
+} from '../../lib/actions'
 import { getOpenOrdersWithApiKey } from '../../lib/orders'
-import type { ApiOrder } from '../../lib/orders'
+import type { ApiOrder, Position, Market, PnLData } from '../../types'
 
 export default function BattlefieldPage() {
   const { address, isConnected } = useAccount()
@@ -18,15 +21,35 @@ export default function BattlefieldPage() {
   const [proxyAddress, setProxyAddress] = useState<string | null>(null)
   const [mode, setMode] = useState<'proxy' | 'eoa'>('proxy')
   const [orders, setOrders] = useState<ApiOrder[]>([])
+  const [positions, setPositions] = useState<Position[]>([])
+  const [markets, setMarkets] = useState<Market[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [apiKey, setApiKey] = useState<any>(null)
+  const [mounted, setMounted] = useState(false)
+  const [positionFilter, setPositionFilter] = useState<'active' | 'resolved'>('active')
+  const [pnlData, setPnlData] = useState<PnLData | null>(null)
 
   useEffect(() => {
-    if (isConnected && address && walletClient) {
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (mounted && isConnected && address && walletClient) {
       initialize()
     }
-  }, [isConnected, address, walletClient])
+  }, [isConnected, address, walletClient, mounted])
+
+  // Poll for updates every 15 seconds
+  useEffect(() => {
+    if (!mounted || !isConnected || !address || !apiKey) return
+
+    const interval = setInterval(() => {
+      refreshData()
+    }, 15000)
+
+    return () => clearInterval(interval)
+  }, [mounted, isConnected, address, apiKey, markets]) // Added markets dependency
 
   async function initialize() {
     if (!address) return
@@ -45,10 +68,58 @@ export default function BattlefieldPage() {
       const key = await getApiKeyAction()
       setApiKey(key)
 
-      // Load orders
-      await refreshOrders()
+      // Load markets (fetch ALL active and inactive to support resolved positions)
+      // fetchAllMarkets(false) might return ONLY inactive, so we fetch both and merge
+      const [activeMarkets, inactiveMarkets] = await Promise.all([
+        fetchAllMarketsAction(true),
+        fetchAllMarketsAction(false)
+      ])
+      
+      // Deduplicate by ID just in case
+      const marketMap = new Map<string, Market>()
+      activeMarkets.forEach(m => marketMap.set(m.id, m))
+      inactiveMarkets.forEach(m => marketMap.set(m.id, m))
+      
+      const allMarkets = Array.from(marketMap.values())
+      setMarkets(allMarkets)
+
+      // Load data
+      await refreshData(allMarkets)
     } catch (err: any) {
       setError(err.message)
+    }
+  }
+
+  async function refreshData(currentMarkets?: Market[]) {
+    if (!address || !walletClient) return
+    
+    // Refresh orders
+    if (apiKey) {
+      await refreshOrders()
+    }
+
+    // Refresh positions
+    try {
+      const marketsToUse = currentMarkets || markets
+      // We need markets to map IDs, but if empty we might still want to try? 
+      // Actually getPositions requires markets for metadata.
+      if (marketsToUse.length === 0) return
+
+      const tradingAddress = mode === 'proxy' && proxyAddress ? proxyAddress : address
+      if (apiKey) {
+          const pos = await getPositionsAction(tradingAddress as `0x${string}`, apiKey, marketsToUse)
+          setPositions(pos)
+          
+          // Fetch PnL data
+          try {
+            const pnl = await getPnLAction(tradingAddress as `0x${string}`, apiKey)
+            setPnlData(pnl)
+          } catch (err: any) {
+            console.error('Failed to load PnL:', err)
+          }
+      }
+    } catch (err: any) {
+      console.error('Failed to load positions:', err)
     }
   }
 
@@ -113,6 +184,34 @@ export default function BattlefieldPage() {
     }
   }
 
+  // Calculate generic PnL
+  const calculatePnL = (pos: Position) => {
+    // Current Value - Cost Basis
+    // Cost Basis = Balance * Entry Price (mapped to 'price' in Position)
+    // Value = Mapped to 'value' in Position
+    const costBasis = pos.balance * pos.price;
+    const currentValue = pos.value;
+    const pnl = currentValue - costBasis;
+    const pnlPercent = costBasis > 0 ? (pnl / costBasis) * 100 : 0;
+    return { pnl, pnlPercent };
+  }
+
+  // Filter positions
+  // We assume a position is 'resolved' if the market is not active or if the value is 0 but balance > 0 (for losers)?
+  // Actually, checking market.active is safer.
+  const filteredPositions = positions.filter(pos => {
+      const market = markets.find(m => m.id === pos.marketId);
+      const isMarketActive = market ? market.active : true; // Default to true if unknown
+      
+      if (positionFilter === 'active') {
+          return isMarketActive;
+      } else {
+          return !isMarketActive;
+      }
+  });
+
+  if (!mounted) return null
+
   if (!isConnected) {
     return (
       <div className="min-h-screen bg-black pt-20 pb-8">
@@ -128,6 +227,9 @@ export default function BattlefieldPage() {
     )
   }
 
+  // Use API PnL data if available, otherwise fall back to calculated PnL
+  const displayPnL = pnlData?.totalPnl ?? positions.reduce((acc, pos) => acc + calculatePnL(pos).pnl, 0);
+
   return (
     <div className="min-h-screen bg-black py-8">
       <div className="max-w-7xl mx-auto px-4">
@@ -136,14 +238,121 @@ export default function BattlefieldPage() {
             <h1 className="text-4xl md:text-6xl font-black uppercase tracking-tighter mb-4 text-lakers-gold">
               THE BATTLEFIELD
             </h1>
-          <p className="text-gray-400 uppercase tracking-wider">Active Positions & Open Orders</p>
+          <p className="text-gray-400 uppercase tracking-wider">Portfolio, Active Positions & Open Orders</p>
+        </div>
+
+        {/* Portfolio Summary */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-lg p-6">
+            <h3 className="text-gray-400 text-sm uppercase tracking-wider mb-2">Portfolio Value</h3>
+            <p className="text-4xl font-black text-white font-mono">
+              ${positions.reduce((acc, p) => acc + (p.value), 0).toFixed(2)}
+              <span className="text-sm text-gray-500 ml-2">(Est.)</span>
+            </p>
+          </div>
+          <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-lg p-6">
+            <h3 className="text-gray-400 text-sm uppercase tracking-wider mb-2">Total PnL</h3>
+            <p className={`text-4xl font-black font-mono ${displayPnL >= 0 ? 'text-green-500' : 'text-enemy-red'}`}>
+              {displayPnL >= 0 ? '+' : ''}${Math.abs(displayPnL).toFixed(2)}
+            </p>
+            {pnlData && (
+              <div className="mt-2 text-xs text-gray-500">
+                <div>Realized: ${pnlData.realizedPnl.toFixed(2)}</div>
+                <div>Unrealized: ${pnlData.unrealizedPnl.toFixed(2)}</div>
+              </div>
+            )}
+          </div>
+          <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-lg p-6">
+            <h3 className="text-gray-400 text-sm uppercase tracking-wider mb-2">Active Positions</h3>
+            <p className="text-4xl font-black text-lakers-gold font-mono">
+                {positions.filter(p => markets.find(m => m.id === p.marketId)?.active).length}
+            </p>
+          </div>
+        </div>
+
+        {/* Positions List */}
+        <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-lg p-6 mb-8">
+          <div className="flex items-center justify-between mb-6">
+             <h2 className="text-2xl font-black uppercase tracking-tighter text-lakers-gold">
+                YOUR HOLDINGS
+             </h2>
+             <div className="flex bg-white/10 rounded p-1">
+                 <button
+                    onClick={() => setPositionFilter('active')}
+                    className={`px-4 py-1 rounded text-xs font-bold uppercase transition-all ${
+                        positionFilter === 'active' 
+                        ? 'bg-lakers-gold text-black' 
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                 >
+                    Active
+                 </button>
+                 <button
+                    onClick={() => setPositionFilter('resolved')}
+                    className={`px-4 py-1 rounded text-xs font-bold uppercase transition-all ${
+                        positionFilter === 'resolved' 
+                        ? 'bg-lakers-gold text-black' 
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                 >
+                    Resolved
+                 </button>
+             </div>
+          </div>
+          
+          {filteredPositions.length === 0 ? (
+            <p className="text-gray-400 text-sm uppercase tracking-wider">No {positionFilter} positions</p>
+          ) : (
+            <div className="space-y-3">
+               {filteredPositions.map((pos) => {
+                 const { pnl, pnlPercent } = calculatePnL(pos);
+                 const market = markets.find(m => m.id === pos.marketId);
+                 
+                 return (
+                <div key={pos.id} className="bg-black/40 border border-white/10 rounded-lg p-4 hover:border-lakers-gold/50 transition-all">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-1">
+                        <span className="text-xs font-black uppercase px-2 py-1 bg-white/10 rounded text-white">
+                          {pos.outcome}
+                        </span>
+                        <span className="text-sm font-bold text-gray-300">
+                           {market?.question || 'Unknown Market'}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-500 font-mono flex gap-4">
+                        <span>ID: {pos.tokenId.slice(0, 8)}...</span>
+                        <span>Avg Price: ${pos.price.toFixed(3)}</span>
+                      </div>
+                    </div>
+                    <div className="text-right flex items-center gap-6">
+                       <div>
+                          <div className={`text-sm font-mono font-bold ${pnl >= 0 ? 'text-green-500' : 'text-enemy-red'}`}>
+                            {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)}
+                          </div>
+                          <div className={`text-xs ${pnl >= 0 ? 'text-green-500' : 'text-enemy-red'}`}>
+                            {pnlPercent.toFixed(1)}%
+                          </div>
+                      </div>
+                      <div>
+                          <div className="text-xl font-mono font-bold text-white">
+                            {pos.balance.toFixed(2)}
+                          </div>
+                          <div className="text-xs text-gray-500 uppercase">Shares</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+               )})} 
+            </div>
+          )}
         </div>
 
         {/* Orders List */}
         <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-lg p-6">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-black uppercase tracking-tighter text-lakers-gold">
-              ACTIVE POSITIONS
+            <h2 className="text-2xl font-black uppercase tracking-tighter text-white">
+              OPEN ORDERS
             </h2>
             {orders.length > 0 && (
               <button
@@ -163,7 +372,7 @@ export default function BattlefieldPage() {
           )}
 
           {orders.length === 0 ? (
-            <p className="text-gray-400 text-sm uppercase tracking-wider">No active positions</p>
+            <p className="text-gray-400 text-sm uppercase tracking-wider">No active orders</p>
           ) : (
             <div className="space-y-3">
               {orders.map((order) => (

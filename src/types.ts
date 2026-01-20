@@ -4,6 +4,25 @@ import type { AxiosRequestHeaders } from "axios"
 // EIP712 Types
 export declare type EIP712ObjectValue = string | number | EIP712Object
 
+export interface Position {
+  id: string
+  marketId: string
+  tokenId: string
+  outcome: string
+  balance: number
+  price: number
+  value: number
+}
+
+export interface PnLData {
+  totalPnl: number
+  realizedPnl: number
+  unrealizedPnl: number
+  totalVolume: number
+  totalFees: number
+}
+
+
 export interface EIP712Object {
   [key: string]: EIP712ObjectValue
 }
@@ -115,3 +134,165 @@ export interface RoundConfig {
   readonly size: number
   readonly amount: number
 }
+
+
+// --- Consolidated Types from Lib & Config ---
+
+// From src/lib/wallet.ts
+export interface ProxyWalletResult {
+  address: `0x${string}`;
+  exists: boolean;
+  transactionHash?: `0x${string}`;
+}
+
+export interface USDTBalance {
+  balance: bigint;
+  balanceFormatted: number;
+  decimals: number;
+  hasMinimumBalance: boolean;
+  minimumRequired: number;
+}
+
+export interface ApprovalStatus {
+  needsUSDTForCTFToken: boolean;
+  needsUSDTForExchange: boolean;
+  needsCTFTokenForExchange: boolean;
+}
+
+export interface ApprovalResult {
+  success: boolean;
+  transactionHash?: `0x${string}`;
+  approvalsExecuted: number;
+  error?: string;
+}
+
+// From src/lib/api.ts
+export interface ApiKeyResult {
+  apiKey: ApiKeyCreds;
+  isNew: boolean;
+  error?: string;
+}
+
+// From src/lib/markets.ts
+export interface MarketToken {
+  token_id: string;
+  outcome: string;
+}
+
+export interface Market {
+  id: string;
+  condition_id: string;
+  question: string;
+  question_id: string;
+  market_slug: string;
+  outcomes: string; // JSON string array
+  volume24hr: string;
+  liquidity: string;
+  clobTokenIds: string; // JSON string array
+  active: boolean;
+  closed: boolean;
+  archived: boolean;
+  startDate: string;
+  endDate: string;
+  tokens: MarketToken[];
+  icon?: string;
+  description: string;
+  tags: string[];
+  groupItemTitle: string;
+  resolved: boolean;
+  liveness: string;
+  disputed: boolean;
+}
+
+export interface MarketsResponse {
+  markets: Market[];
+  pagination?: {
+    page: number;
+    limit: number;
+    totalResults: number;
+    totalPages: number;
+    hasMore: boolean;
+    hasPrevPage: boolean;
+  };
+}
+
+// From src/lib/orders.ts
+export interface ApiOrder {
+  orderId: number;
+  clientOrderId: string;
+  symbol: string;
+  side: 'BUY' | 'SELL';
+  type: string;
+  timeInForce: string;
+  price: string;
+  origQty: string;
+  executedQty: string;
+  cumQuote: string;
+  status: string;
+  time: number;
+  updateTime: number;
+  avgPrice: string;
+  origType: string;
+  tokenId: string;
+  ctfTokenId: string;
+  stopPrice: string;
+  orderListId: number;
+  // Fallback for fields that might be used elsewhere or in different API versions
+  id?: string;
+  market_id?: string;
+  created_at?: string;
+  outcome?: string;
+}
+
+export interface OrdersResult {
+  orders: ApiOrder[];
+  total: number;
+  error?: string;
+}
+
+export interface PlaceOrderParams {
+  tokenId: string;
+  side: Side;
+  price: number;
+  size: number;
+  tickSize?: '0.1' | '0.01' | '0.001' | '0.0001';
+  feeRateBps?: number;
+  nonce?: number;
+  expiration?: number;
+  taker?: string;
+}
+
+export interface PlaceOrderResult {
+  orderId?: string;
+  success: boolean;
+  order?: any;
+  error?: string;
+}
+
+// From src/config/network.ts
+export interface NetworkConfig {
+  chainId: number;
+  name: string;
+  rpcUrl: string;
+  explorerUrl: string;
+  proxyFactoryAddress: `0x${string}`;
+  usdtAddress: `0x${string}`;
+  ctfTokenAddress: `0x${string}`;
+  ctfExchangeAddress: `0x${string}`;
+  entryService: string;
+  collateralTokenDecimals: number;
+  orderSignerAddress?: `0x${string}`;
+  proxyImplementationAddress?: `0x${string}`;
+  conditionalTokensAddress?: `0x${string}`;
+}
+
+// From src/config/nba-standings.ts
+export interface TeamStanding {
+  rank: number;
+  code: string;
+  name: string;
+  wins: number;
+  losses: number;
+  winPct: string;
+}
+

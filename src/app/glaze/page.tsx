@@ -8,19 +8,19 @@ import {
   fetchAllMarketsAction,
   cancelOrderAction,
   cancelOrdersAction,
-} from '../actions'
-import { getApiKey } from '../../lib/api-key'
+} from '../../lib/actions'
+import { getApiKey } from '../../lib/api'
 import { getOpenOrdersWithApiKey, placeOrderWithApiKey } from '../../lib/orders'
-import { filterMarketsByDescription, sortMarketsWithLALFirst, getTokenIdForOutcome, findTeamMarkets, parseOutcomes, getOutcomeTokenMap } from '../../lib/markets'
-import type { PlaceOrderParams, ApiOrder } from '../../lib/orders'
-import type { Market } from '../../lib/markets'
+import { sortMarketsWithLALFirst, getTokenIdForOutcome, findTeamMarkets, parseOutcomes, getOutcomeTokenMap } from '../../lib/markets'
+import type { PlaceOrderParams, ApiOrder } from '../../types'
+import type { Market } from '../../types'
 import { Side } from '../../types'
-import { HeroSection } from '../../components/glaze/HeroSection'
-import { ErrorDisplay } from '../../components/glaze/ErrorDisplay'
-import { FraudsCardStack } from '../../components/glaze/FraudsCardStack'
-import { TrustTheKingCard } from '../../components/glaze/TrustTheKingCard'
-import { StandingsSidebar } from '../../components/glaze/StandingsSidebar'
-import { CommandCenterModal } from '../../components/glaze/CommandCenterModal'
+import { HeroSection } from '../../components/hero-section'
+import { ErrorDisplay } from '../../components/error-display'
+import { StandingsSidebar } from '../../components/standings-sidebar'
+import { FraudsCardStack } from '../../components/frauds-card-stack'
+import { TrustTheKingCard } from '../../components/trust-the-king-card'
+import { CommandCenterModal } from '../../components/command-center-modal'
 
 export default function GlazePage() {
   const { address, isConnected } = useAccount()
@@ -38,6 +38,7 @@ export default function GlazePage() {
   // Standings sidebar is now always visible, no state needed
   const [commandCenterOpen, setCommandCenterOpen] = useState(false)
   const [commandCenterTheme, setCommandCenterTheme] = useState<'enemy-red' | 'lakers-gold'>('lakers-gold')
+  const [mounted, setMounted] = useState(false)
 
   // Order form state - Always LeBron's Side (BUY)
   const [orderForm, setOrderForm] = useState<PlaceOrderParams>({
@@ -50,16 +51,20 @@ export default function GlazePage() {
     nonce: 0,
   })
 
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
   // Load markets on mount regardless of wallet connection
   useEffect(() => {
     loadMarkets()
   }, [])
 
   useEffect(() => {
-    if (isConnected && address && walletClient) {
-    initialize()
+    if (mounted && isConnected && address && walletClient) {
+      initialize()
     }
-  }, [isConnected, address, walletClient])
+  }, [mounted, isConnected, address, walletClient])
 
   async function initialize() {
     if (!address) {
@@ -111,19 +116,11 @@ export default function GlazePage() {
   async function loadMarkets() {
     setMarketsLoading(true)
     try {
-      // Fetch all markets
       const allMarkets = await fetchAllMarketsAction(true)
-      
-      // Filter for NBA markets only (search for "NBA" in description)
-      const nbaMarkets = filterMarketsByDescription(allMarkets, 'NBA')
-      
-      // Sort to prioritize LAL markets
-      const sortedMarkets = sortMarketsWithLALFirst(nbaMarkets)
-      
+      const sortedMarkets = sortMarketsWithLALFirst(allMarkets)
       setMarkets(sortedMarkets)
     } catch (err: any) {
       console.error('Failed to load markets:', err)
-      // Don't set error state for markets, just log it
     } finally {
       setMarketsLoading(false)
     }
@@ -287,6 +284,8 @@ export default function GlazePage() {
     }
   }
 
+  if (!mounted) return null
+
   if (!isConnected) {
     return (
       <div className="min-h-screen bg-black pt-20 pb-8">
@@ -309,7 +308,21 @@ export default function GlazePage() {
         <div className="flex-1 transition-all duration-300">
           <HeroSection />
 
-          <ErrorDisplay error={error} />
+          <ErrorDisplay 
+            error={error} 
+            eoaAddress={address as `0x${string}` | undefined}
+            proxyAddress={proxyAddress as `0x${string}` | undefined}
+            requiredAmount={error?.includes('transfer') ? parseFloat(error.match(/transfer ([\d.]+) USDT/)?.[1] || '0') : undefined}
+            onTransferComplete={async () => {
+              // Refresh balance after transfer
+              if (address && walletClient) {
+                const tradingAddress = mode === 'proxy' && proxyAddress ? proxyAddress : address
+                const balanceInfo = await checkBalanceAction(tradingAddress as `0x${string}`)
+                setBalance(balanceInfo)
+                setError(null)
+              }
+            }}
+          />
 
           {/* Two Rows: LAL on top, Frauds on bottom */}
           <div className="space-y-4">

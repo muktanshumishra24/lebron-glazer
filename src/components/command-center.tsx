@@ -1,6 +1,6 @@
 'use client'
 
-import type { PlaceOrderParams } from '../../lib/orders'
+import type { PlaceOrderParams } from '../types'
 
 interface CommandCenterProps {
   orderForm: PlaceOrderParams
@@ -23,13 +23,10 @@ export function CommandCenter({
 
   const borderColor = theme === 'enemy-red' ? 'border-enemy-red/40' : 'border-lakers-gold/30'
   const textColor = theme === 'enemy-red' ? 'text-enemy-red' : 'text-lakers-gold'
-  const bgColor = theme === 'enemy-red' ? 'bg-enemy-red' : 'bg-lakers-gold'
-  const textColorDark = theme === 'enemy-red' ? 'text-white' : 'text-black'
-
+  const labelColor = theme === 'enemy-red' ? 'text-gray-300' : 'text-gray-300'
   const inputBorderColor = theme === 'enemy-red' ? 'border-enemy-red/50 focus:border-enemy-red' : 'border-lakers-gold/50 focus:border-lakers-gold'
   const inputBgColor = theme === 'enemy-red' ? 'bg-black/40 focus:bg-black/60' : 'bg-black/40 focus:bg-black/60'
   const inputTextColor = theme === 'enemy-red' ? 'text-white placeholder:text-gray-500' : 'text-lakers-gold placeholder:text-gray-500'
-  const labelColor = theme === 'enemy-red' ? 'text-gray-300' : 'text-gray-300'
 
   return (
     <div className={`mt-6 pt-6 border-t ${borderColor}`}>

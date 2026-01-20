@@ -1,10 +1,10 @@
 'use client'
 
-import { parseOutcomes, getOutcomeTokenMap, findTeamMarkets } from '../../lib/markets'
-import { getLALStanding } from '../../config/nba-standings'
-import type { Market } from '../../lib/markets'
-import type { PlaceOrderParams } from '../../lib/orders'
-import { Side } from '../../types'
+import { parseOutcomes, getOutcomeTokenMap, findTeamMarkets } from '../lib/markets'
+import { getLALStanding } from '../config/nba-standings'
+import type { Market } from '../types'
+import type { PlaceOrderParams } from '../types'
+import { Side } from '../types'
 
 interface TrustTheKingCardProps {
   markets: Market[]
@@ -112,7 +112,7 @@ export function TrustTheKingCard({
                   </div>
                   <button
                     onClick={() => {
-                      setOrderForm({ ...orderForm, tokenId, side: Side.BUY })
+                      setOrderForm({ ...orderForm, tokenId: tokenId!, side: Side.BUY })
                     }}
                     className="w-full text-xs bg-lakers-gold text-black px-3 py-2 rounded font-medium uppercase hover:bg-lakers-gold/90 transition-colors"
                   >

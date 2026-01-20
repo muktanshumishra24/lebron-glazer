@@ -4,45 +4,52 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useAccount } from 'wagmi'
-import { WalletConnect } from './WalletConnect'
-import { SetupModal } from './SetupModal'
-import { checkBalanceAction } from '../app/actions'
+import { WalletConnect } from './wallet'
+import { SetupModal } from './setup-modal'
+import { checkBalanceAction, checkProxyWalletAction } from '../lib/actions'
 import { getLALStanding } from '../config/nba-standings'
 
 export function Navigation() {
   const [mounted, setMounted] = useState(false)
   const pathname = usePathname()
   const { address, isConnected } = useAccount()
-  const [balance, setBalance] = useState<number | null>(null)
+  const [balances, setBalances] = useState<{ eoa: number | null, proxy: number | null }>({ eoa: null, proxy: null })
   const [balanceLoading, setBalanceLoading] = useState(false)
   const [setupModalOpen, setSetupModalOpen] = useState(false)
 
   useEffect(() => {
     setMounted(true)
-    // #region agent log
-    if (typeof window !== 'undefined') {
-      fetch('http://127.0.0.1:7244/ingest/aaa7f80b-2477-4b58-bbd9-5c137396a9f7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Navigation.tsx:20',message:'Component mounted - client side',data:{mounted:true,isConnected,hasAddress:!!address},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    }
-    // #endregion
   }, [])
 
   useEffect(() => {
     if (mounted && isConnected && address) {
-      loadBalance()
+      loadBalances()
     } else {
-      setBalance(null)
+      setBalances({ eoa: null, proxy: null })
     }
   }, [mounted, isConnected, address])
 
-  async function loadBalance() {
+  async function loadBalances() {
     if (!address) return
     setBalanceLoading(true)
     try {
-      const balanceInfo = await checkBalanceAction(address as `0x${string}`)
-      setBalance(balanceInfo.balanceFormatted)
+      // 1. Fetch EOA Balance
+      const eoaInfo = await checkBalanceAction(address as `0x${string}`)
+      
+      // 2. Check for Proxy and Fetch Proxy Balance
+      let proxyBalance = null
+      const proxyResult = await checkProxyWalletAction(address as `0x${string}`)
+      if (proxyResult.exists && proxyResult.address) {
+        const proxyInfo = await checkBalanceAction(proxyResult.address as `0x${string}`)
+        proxyBalance = proxyInfo.balanceFormatted
+      }
+
+      setBalances({
+        eoa: eoaInfo.balanceFormatted,
+        proxy: proxyBalance
+      })
     } catch (err) {
-      // Silently fail - don't show errors in header
-      console.error('Failed to load balance:', err)
+      console.error('Failed to load balances:', err)
     } finally {
       setBalanceLoading(false)
     }
@@ -84,16 +91,30 @@ export function Navigation() {
             {/* Low Profile Stats - Only render after mount to prevent hydration issues */}
             {mounted && isConnected && (
               <div className="hidden md:flex items-center gap-4 text-xs text-gray-400">
-                {balance !== null && !balanceLoading && (
-                  <div className="flex items-center gap-1">
-                    <span className="text-gray-500">USDT:</span>
-                    <span className="text-lakers-gold/70 font-mono">
-                      {balance.toFixed(2)}
+                {/* EOA Balance */}
+                {balances.eoa !== null && !balanceLoading && (
+                  <div className="flex items-center gap-1" title="EOA Balance">
+                    <span className="text-gray-500">EOA:</span>
+                    <span className="text-white/80 font-mono">
+                      {balances.eoa.toFixed(2)}
                     </span>
+                    <span className="text-gray-600 text-[10px]">USDT</span>
                   </div>
                 )}
+                
+                {/* Proxy Balance */}
+                {balances.proxy !== null && !balanceLoading && (
+                  <div className="flex items-center gap-1" title="Proxy Wallet Balance">
+                    <span className="text-gray-500">PROXY:</span>
+                    <span className="text-lakers-gold/90 font-mono">
+                      {balances.proxy.toFixed(2)}
+                    </span>
+                    <span className="text-gray-600 text-[10px]">USDT</span>
+                  </div>
+                )}
+
                 {lalRank && (
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 pl-2 border-l border-white/10">
                     <span className="text-gray-500">LAL:</span>
                     <span className="text-lakers-gold/70 font-mono">#{lalRank}</span>
                   </div>
@@ -122,7 +143,7 @@ export function Navigation() {
         onComplete={() => {
           // Refresh balance after setup
           if (address) {
-            loadBalance()
+            loadBalances()
           }
         }}
       />

@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@metamask/sdk": "^0.34.0",
+    "@prob/clob": "^0.1.1",
     "@safe-global/protocol-kit": "^6.1.2",
     "@tanstack/react-query": "^5.90.16",
     "axios": "^1.13.2",

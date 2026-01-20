@@ -3,10 +3,9 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient } from 'wagmi'
-import { checkProxyWallet, createProxyWallet } from '../lib/wallet'
-import { checkApprovals, approveTokensForEOA, approveTokensForProxy } from '../lib/approvals'
-import { checkBalanceAction } from '../app/actions'
-import { createOrLoadApiKey, getApiKey } from '../lib/api-key'
+import { checkProxyWallet, createProxyWallet, checkApprovals, approveTokensForEOA, approveTokensForProxy } from '../lib/wallet'
+import { checkBalanceAction } from '../lib/actions'
+import { createOrLoadApiKey, getApiKey } from '../lib/api'
 
 interface SetupModalProps {
   isOpen: boolean

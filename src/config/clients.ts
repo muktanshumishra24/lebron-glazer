@@ -40,31 +40,3 @@ export function getPublicClient() {
 // For backward compatibility
 export const publicClient = getPublicClient();
 export const walletRpcUrl = NETWORK_CONFIG.rpcUrl;
-
-/**
- * @deprecated Wallet operations are now handled client-side using wagmi
- * These functions are stubs that throw errors to guide migration
- */
-export function getWalletClient() {
-  throw new Error(
-    'getWalletClient() is no longer available. ' +
-    'Use wagmi hooks (useWalletClient) on the client side instead. ' +
-    'For server actions, pass walletClient as a parameter from the client.'
-  );
-}
-
-export function getAccount() {
-  throw new Error(
-    'getAccount() is no longer available. ' +
-    'Use wagmi hooks (useAccount) on the client side instead. ' +
-    'For server actions, pass account information as a parameter from the client.'
-  );
-}
-
-export function getPrivateKeyValue() {
-  throw new Error(
-    'getPrivateKeyValue() is no longer available. ' +
-    'Private keys are no longer stored or used. ' +
-    'Use wagmi for wallet operations on the client side.'
-  );
-}

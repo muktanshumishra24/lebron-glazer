@@ -5,19 +5,19 @@
 
 // Wallet operations
 export { checkProxyWallet, createProxyWallet, ensureProxyWallet } from './wallet';
-export type { ProxyWalletResult } from './wallet';
+export type { ProxyWalletResult } from '../types';
 
 // API Key management
-export { createOrLoadApiKey, getApiKey, removeApiKey } from './api-key';
-export type { ApiKeyResult } from './api-key';
+export { createOrLoadApiKey, getApiKey, removeApiKey } from './api';
+export type { ApiKeyResult } from '../types';
 
 // Token approvals
-export { checkApprovals, approveTokensForProxy, approveTokensForEOA } from './approvals';
-export type { ApprovalStatus, ApprovalResult } from './approvals';
+export { checkApprovals, approveTokensForProxy, approveTokensForEOA } from './wallet';
+export type { ApprovalStatus, ApprovalResult } from '../types';
 
 // Balance checking
-export { checkUSDTBalance } from './balance';
-export type { USDTBalance } from './balance';
+export { checkUSDTBalance, transferUSDT } from './wallet';
+export type { USDTBalance } from '../types';
 
 // Market operations
 export {
@@ -34,7 +34,7 @@ export {
   getTeamsInMarket,
   getBothTeamsBetterThanLAL,
 } from './markets';
-export type { Market, MarketToken, MarketsResponse } from './markets';
+export type { Market, MarketToken, MarketsResponse } from '../types';
 
 // Order operations
 export {
@@ -45,7 +45,7 @@ export {
   placeOrder,
   placeOrderWithApiKey,
 } from './orders';
-export type { ApiOrder, OrdersResult, PlaceOrderParams, PlaceOrderResult } from './orders';
+export type { ApiOrder, OrdersResult, PlaceOrderParams, PlaceOrderResult } from '../types';
 
 // Utilities
 export { generateOrderSalt, roundDown, roundUp, roundNormal, decimalPlaces, resolveAddress, isWalletClient } from './utils';

@@ -1,70 +1,15 @@
 import axios from 'axios';
 import { type WalletClient, type Transport, type Chain, type Account, type TypedDataDefinition, type Hex, type TypedData, hashTypedData, parseUnits } from 'viem';
-import { ENTRY_SERVICE, CHAIN_ID, EIP712_DOMAIN, ORDER_STRUCTURE, NETWORK_CONFIG, ENV_PROTOCOL_VERSION, CTF_EXCHANGE_ADDRESS, ROUNDING_CONFIG } from '../config/index';
-import { createL2Headers } from './headers';
-import type { ApiKeyCreds, UserOrder, Order, OrderData, RoundConfig, SignedOrder, CreateOrderOptions } from '../types';
-import { Side } from '../types';
-import { SignatureType } from '../types';
-import { createOrLoadApiKey, getApiKey } from './api-key';
-import { checkApprovals, approveTokensForProxy, approveTokensForEOA } from './approvals';
+import { ORDER_STRUCTURE, NETWORK_CONFIG, ENV_PROTOCOL_VERSION, ROUNDING_CONFIG, EIP712_DOMAIN } from '../config/index';
+import { createL2Headers } from './api';
+import type { ApiKeyCreds, UserOrder, Order, OrderData, RoundConfig, SignedOrder, CreateOrderOptions, ApiOrder, OrdersResult, PlaceOrderParams, PlaceOrderResult, Position, Market } from '../types';
+import { Side, SignatureType } from '../types';
+import { createOrLoadApiKey, getApiKey } from './api';
+import { checkApprovals, approveTokensForProxy, approveTokensForEOA } from './wallet';
 import { generateOrderSalt, roundNormal, roundDown, decimalPlaces, roundUp } from './utils';
 
-/**
- * Order format from the API
- */
-export interface ApiOrder {
-  orderId: number;
-  clientOrderId: string;
-  symbol: string;
-  side: 'BUY' | 'SELL';
-  type: string;
-  timeInForce: string;
-  price: string;
-  origQty: string;
-  executedQty: string;
-  cumQuote: string;
-  status: string;
-  time: number;
-  updateTime: number;
-  avgPrice: string;
-  origType: string;
-  tokenId: string;
-  ctfTokenId: string;
-  stopPrice: string;
-  orderListId: number;
-}
-
-/**
- * Result of fetching orders
- */
-export interface OrdersResult {
-  orders: ApiOrder[];
-  total: number;
-}
-
-/**
- * Parameters for placing an order
- */
-export interface PlaceOrderParams {
-  tokenId: string;
-  side: Side;
-  price: number;
-  size: number;
-  tickSize?: '0.1' | '0.01' | '0.001' | '0.0001';
-  feeRateBps?: number;
-  nonce?: number;
-  expiration?: number;
-  taker?: string;
-}
-
-/**
- * Result of placing an order
- */
-export interface PlaceOrderResult {
-  orderId?: string;
-  success: boolean;
-  order?: any;
-}
+// --- Types ---
+// Imported from ../types
 
 // ============================================================================
 // Order Building Functions (from orders/ folder)
@@ -295,7 +240,7 @@ async function createOrder(
     ROUNDING_CONFIG[options.tickSize],
   );
 
-  return buildOrder(wallet, CTF_EXCHANGE_ADDRESS, chainId, orderData);
+  return buildOrder(wallet, NETWORK_CONFIG.ctfExchangeAddress, chainId, orderData);
 }
 
 async function submitOrder(
@@ -306,8 +251,8 @@ async function submitOrder(
   passphrase: string,
   accountType?: 'eoa',
 ): Promise<any> {
-  const endpoint = ENTRY_SERVICE;
-  const path = '/public/api/v1/order/' + CHAIN_ID;
+  const endpoint = NETWORK_CONFIG.entryService;
+  const path = '/public/api/v1/order/' + NETWORK_CONFIG.chainId;
   const method = 'POST';
 
   const requestBody = {
@@ -385,7 +330,7 @@ async function createAndSubmitOrder(
 
   const createdOrder = await createOrder(
     wallet,
-    CHAIN_ID,
+    NETWORK_CONFIG.chainId,
     signatureType,
     funderAddress,
     order,
@@ -462,8 +407,8 @@ export async function getOpenOrders(
   page: number = 1,
   limit: number = 20,
 ): Promise<OrdersResult> {
-  const endpoint = ENTRY_SERVICE;
-  const basePath = `/public/api/v1/orders/${CHAIN_ID}/open`;
+  const endpoint = NETWORK_CONFIG.entryService;
+  const basePath = `/public/api/v1/orders/${NETWORK_CONFIG.chainId}/open`;
   const method = 'GET';
 
   const queryParams = new URLSearchParams({
@@ -503,8 +448,8 @@ export async function cancelOrder(
   eoaAddress: `0x${string}`,
   accountType?: 'eoa',
 ): Promise<boolean> {
-  const endpoint = ENTRY_SERVICE;
-  const basePath = `/public/api/v1/order/${CHAIN_ID}/${order.orderId}`;
+  const endpoint = NETWORK_CONFIG.entryService;
+  const basePath = `/public/api/v1/order/${NETWORK_CONFIG.chainId}/${order.orderId}`;
   const method = 'DELETE';
 
   const queryParams = new URLSearchParams({
@@ -682,9 +627,67 @@ export async function placeOrderWithApiKey(
     console.warn('⚠️  Failed to check/approve tokens:', approvalError instanceof Error ? approvalError.message : String(approvalError));
   }
 
+  // Check balance before placing order (for BUY orders, need price * size in USDT)
+  // For proxy wallets, check both EOA and proxy balances
+  try {
+    const { checkUSDTBalance } = await import('./wallet');
+    const requiredCollateral = params.side === Side.BUY ? params.price * params.size : 0;
+    
+    if (requiredCollateral > 0) {
+      // Get the EOA address (the original wallet address)
+      const eoaAddress = walletClient?.account?.address as `0x${string}` | undefined;
+      
+      // Check balance on the trading address (proxy or EOA)
+      const balanceInfo = await checkUSDTBalance(address, requiredCollateral);
+      console.log(`[BALANCE] Trading address (${address}) balance: ${balanceInfo.balanceFormatted.toFixed(4)} USDT, Required: ${requiredCollateral.toFixed(4)} USDT`);
+      
+      // If using proxy and balance is insufficient, check EOA balance
+      if (!useEOA && !balanceInfo.hasMinimumBalance && eoaAddress && eoaAddress.toLowerCase() !== address.toLowerCase()) {
+        const eoaBalanceInfo = await checkUSDTBalance(eoaAddress, 0);
+        console.log(`[BALANCE] EOA address (${eoaAddress}) balance: ${eoaBalanceInfo.balanceFormatted.toFixed(4)} USDT`);
+        
+        if (eoaBalanceInfo.balanceFormatted >= requiredCollateral) {
+          const errorMessage = `Insufficient balance in proxy wallet. You have ${eoaBalanceInfo.balanceFormatted.toFixed(4)} USDT in your main wallet but ${balanceInfo.balanceFormatted.toFixed(4)} USDT in your proxy wallet. You need to transfer ${requiredCollateral.toFixed(4)} USDT to your proxy wallet to place this order.`;
+          console.error(`[BALANCE] ❌ ${errorMessage}`);
+          throw new Error(errorMessage);
+        }
+      }
+      
+      if (!balanceInfo.hasMinimumBalance) {
+        const errorMessage = `Insufficient balance. You have ${balanceInfo.balanceFormatted.toFixed(4)} USDT but need ${requiredCollateral.toFixed(4)} USDT to place this order.`;
+        console.error(`[BALANCE] ❌ ${errorMessage}`);
+        throw new Error(errorMessage);
+      }
+      console.log('[BALANCE] ✅ Sufficient balance available');
+    }
+  } catch (balanceError) {
+    // If balance check fails, still try to place order (API will reject if insufficient)
+    // But if it's our own validation error, throw it
+    if (balanceError instanceof Error && balanceError.message.includes('Insufficient balance')) {
+      throw balanceError;
+    }
+    console.warn('⚠️  Failed to check balance:', balanceError instanceof Error ? balanceError.message : String(balanceError));
+  }
+
   try {
     return await placeOrder(address, apiKey, params, walletClient, useEOA);
   } catch (error) {
+    // Improve error message for insufficient balance
+    if (error instanceof Error && error.message.includes('Insufficient collateral balance')) {
+      const { checkUSDTBalance } = await import('./wallet');
+      try {
+        const balanceInfo = await checkUSDTBalance(address, 0);
+        const requiredCollateral = params.side === Side.BUY ? params.price * params.size : 0;
+        const improvedError = new Error(
+          `Insufficient balance. You have ${balanceInfo.balanceFormatted.toFixed(4)} USDT but need ${requiredCollateral.toFixed(4)} USDT to place this order. Please deposit more USDT.`
+        );
+        throw improvedError;
+      } catch (balanceCheckError) {
+        // If balance check fails, use original error
+        throw error;
+      }
+    }
+    
     return await handleApiKeyError(
       address,
       error,
@@ -696,3 +699,118 @@ export async function placeOrderWithApiKey(
     );
   }
 }
+
+/**
+ * Get positions
+ */
+export async function getPositions(
+  address: `0x${string}`,
+  apiKey: ApiKeyCreds,
+  markets: Market[] = [],
+): Promise<Position[]> {
+  const endpoint = NETWORK_CONFIG.entryService;
+  const path = '/public/api/v1/position/current';
+  const method = 'GET';
+
+  const queryParams = new URLSearchParams({
+    user: address,
+  });
+  const queryString = queryParams.toString();
+  const pathWithQuery = queryString ? `${path}?${queryString}` : path;
+  const url = `${endpoint}${pathWithQuery}`;
+
+  const headers = createL2Headers(
+    address,
+    apiKey.key,
+    apiKey.secret,
+    apiKey.passphrase,
+    method,
+    pathWithQuery,
+    undefined,
+  );
+
+  const response = await axios.get(url, { headers });
+  const rawPositions = (response.data?.positions || response.data || []) as any[];
+
+  const positions: Position[] = [];
+
+  for (const raw of rawPositions) {
+    const size = Number(raw.size || raw.balance || 0);
+    // Determine tokenId. API may return it as `tokenId` or `assetId` or `instrumentId`
+    const tokenId = raw.tokenId || raw.tokenID || raw.instrumentId || raw.ctfTokenId;
+    
+    if (size > 0 && tokenId) {
+      let marketId = raw.marketId;
+      let outcome = raw.outcome;
+
+      // If we have markets and missing info, try to find it
+      if (markets.length > 0 && (!marketId || !outcome)) {
+        for (const market of markets) {
+          if (!market.tokens) continue;
+          const token = market.tokens.find(t => t.token_id === tokenId);
+          if (token) {
+            marketId = market.id;
+            outcome = token.outcome;
+            break;
+          }
+        }
+      }
+
+      positions.push({
+        id: raw.id || String(Math.random()),
+        marketId: marketId || 'unknown',
+        tokenId: tokenId,
+        outcome: outcome || 'Unknown',
+        balance: size,
+        price: Number(raw.price || raw.averagePrice || 0),
+        value: Number(raw.value || 0),
+      });
+    }
+  }
+
+  return positions;
+}
+
+/**
+ * Get user PnL (Profit and Loss) data
+ * @param address - User's trading address (proxy or EOA)
+ * @param apiKey - API credentials
+ * @returns PnL data including total, realized, and unrealized PnL
+ */
+export async function getPnL(
+  address: `0x${string}`,
+  apiKey: ApiKeyCreds,
+): Promise<import('../types').PnLData> {
+  const endpoint = NETWORK_CONFIG.entryService;
+  const path = '/public/api/v1/pnl';
+  const method = 'GET';
+
+  const queryParams = new URLSearchParams({
+    user_address: address,
+  });
+  const queryString = queryParams.toString();
+  const pathWithQuery = queryString ? `${path}?${queryString}` : path;
+  const url = `${endpoint}${pathWithQuery}`;
+
+  const headers = createL2Headers(
+    address,
+    apiKey.key,
+    apiKey.secret,
+    apiKey.passphrase,
+    method,
+    pathWithQuery,
+    undefined,
+  );
+
+  const response = await axios.get(url, { headers });
+  const data = response.data || {};
+
+  return {
+    totalPnl: Number(data.total_pnl || data.totalPnl || 0),
+    realizedPnl: Number(data.realized_pnl || data.realizedPnl || 0),
+    unrealizedPnl: Number(data.unrealized_pnl || data.unrealizedPnl || 0),
+    totalVolume: Number(data.total_volume || data.totalVolume || 0),
+    totalFees: Number(data.total_fees || data.totalFees || 0),
+  };
+}
+

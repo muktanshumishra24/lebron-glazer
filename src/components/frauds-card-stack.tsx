@@ -1,10 +1,11 @@
 'use client'
 
-import { parseOutcomes, getOutcomeTokenMap, getBothTeamsBetterThanLAL } from '../../lib/markets'
-import { getTeamsAboveLAL, type TeamStanding } from '../../config/nba-standings'
-import type { Market } from '../../lib/markets'
-import type { PlaceOrderParams } from '../../lib/orders'
-import { Side } from '../../types'
+import { parseOutcomes, getOutcomeTokenMap } from '../lib/markets'
+import { getTeamsAboveLAL } from '../config/nba-standings'
+import type { TeamStanding } from '../types'
+import type { Market } from '../types'
+import type { PlaceOrderParams } from '../types'
+import { Side } from '../types'
 
 interface FraudsCardStackProps {
   markets: Market[]
@@ -13,7 +14,7 @@ interface FraudsCardStackProps {
   onPlaceOrder: () => void
   apiKey: any
   loading: boolean
-  excludeMarketIds?: string[] // Market IDs to exclude (e.g., LAL markets already shown)
+  excludeMarketIds?: string[]
 }
 
 export function FraudsCardStack({
@@ -27,26 +28,22 @@ export function FraudsCardStack({
 }: FraudsCardStackProps) {
   const teamsAboveLAL = getTeamsAboveLAL()
   
-  // Collect all fraud markets: 
-  // 1. Markets where LAL competes against teams ranked above LAL (betting on LAL = shorting the fraud)
-  // 2. Markets where two teams ranked above LAL compete (can short either)
-  // NOTE: Exclude markets already shown in LAL section to avoid duplicates
   const allFraudMarkets: Array<{
     market: Market
-    type: 'lal-vs-fraud' | 'fraud-vs-fraud'
+    type: 'lal-vs-fraud' | 'fraud-vs-fraud' | 'fraud-vs-others'
     team1: TeamStanding
-    team2?: TeamStanding // Only for fraud-vs-fraud
+    team2?: TeamStanding
   }> = []
 
+  const excludedSet = new Set(excludeMarketIds)
+
   markets.forEach(market => {
-    // Skip markets that are already shown in the LAL section
-    if (excludeMarketIds.includes(market.id)) {
+    if (excludedSet.has(market.id)) {
       return
     }
     const outcomes = parseOutcomes(market.outcomes)
     const marketText = `${market.description} ${market.question}`.toLowerCase()
     
-    // Check if LAL is in the market
     const hasLAL = marketText.includes('lal') || 
                    marketText.includes('los angeles') || 
                    marketText.includes('lakers') ||
@@ -54,42 +51,43 @@ export function FraudsCardStack({
                                      o.toLowerCase().includes('los angeles') || 
                                      o.toLowerCase().includes('lakers'))
     
+    const fraudTeams = teamsAboveLAL.filter(team => {
+      const teamCodeLower = team.code.toLowerCase()
+      const codeRegex = new RegExp(`\\b${teamCodeLower}\\b`, 'i')
+      const foundInText = codeRegex.test(marketText)
+      const foundInOutcomes = outcomes.some(o => codeRegex.test(o))
+      return foundInText || foundInOutcomes
+    })
+
+    if (fraudTeams.length === 0) return
+
     if (hasLAL) {
-      // LAL vs team ranked above LAL
-      teamsAboveLAL.forEach(team => {
-        const teamCodeLower = team.code.toLowerCase()
-        const hasOpponent = marketText.includes(teamCodeLower) ||
-                           outcomes.some(o => o.toLowerCase().includes(teamCodeLower))
-        
-        if (hasOpponent) {
-          allFraudMarkets.push({
-            market,
-            type: 'lal-vs-fraud',
-            team1: team, // The fraud team (ranked above LAL)
-          })
-        }
+      allFraudMarkets.push({
+        market,
+        type: 'lal-vs-fraud',
+        team1: fraudTeams[0],
+      })
+    } else if (fraudTeams.length >= 2) {
+      allFraudMarkets.push({
+        market,
+        type: 'fraud-vs-fraud',
+        team1: fraudTeams[0],
+        team2: fraudTeams[1],
       })
     } else {
-      // Two teams ranked above LAL competing
-      const bothTeams = getBothTeamsBetterThanLAL(market, teamsAboveLAL)
-      if (bothTeams) {
-        allFraudMarkets.push({
-          market,
-          type: 'fraud-vs-fraud',
-          team1: bothTeams.team1,
-          team2: bothTeams.team2,
-        })
-      }
+      allFraudMarkets.push({
+        market,
+        type: 'fraud-vs-others',
+        team1: fraudTeams[0],
+      })
     }
   })
 
-  // Filter markets with valid tokenIds
   const validFraudMarkets = allFraudMarkets.filter(({ market, type, team1, team2 }) => {
     const outcomes = parseOutcomes(market.outcomes)
     const outcomeTokenMap = getOutcomeTokenMap(market)
 
     if (type === 'lal-vs-fraud') {
-      // Check if we have tokenId for LAL (betting on LAL = shorting the fraud team)
       const lalOutcome = outcomes.find(outcome =>
         outcome.toLowerCase().includes('lal') ||
         outcome.toLowerCase().includes('los angeles') ||
@@ -98,21 +96,29 @@ export function FraudsCardStack({
       if (lalOutcome) {
         return !!outcomeTokenMap.get(lalOutcome)
       }
-      // Fallback: Yes/No tokens
       const yesToken = market.tokens.find(t => t.outcome === 'Yes')
       const noToken = market.tokens.find(t => t.outcome === 'No')
       return !!(yesToken && noToken)
     } else if (type === 'fraud-vs-fraud' && team2) {
-      // Check if we have at least one valid tokenId (to short either team)
       const team1Outcome = outcomes.find(o =>
         o.toLowerCase().includes(team1.code.toLowerCase())
       )
       const team2Outcome = outcomes.find(o =>
         o.toLowerCase().includes(team2.code.toLowerCase())
       )
-      const hasToken1 = team1Outcome && outcomeTokenMap.get(team2Outcome || '')
-      const hasToken2 = team2Outcome && outcomeTokenMap.get(team1Outcome || '')
-      return !!(hasToken1 || hasToken2)
+      const canShortTeam1 = team1Outcome && outcomeTokenMap.get(team2Outcome || '')
+      const canShortTeam2 = team2Outcome && outcomeTokenMap.get(team1Outcome || '')
+      return !!(canShortTeam1 || canShortTeam2)
+    } else if (type === 'fraud-vs-others') {
+      const team1Outcome = outcomes.find(o =>
+        o.toLowerCase().includes(team1.code.toLowerCase())
+      )
+      if (!team1Outcome) return false
+      const otherOutcome = outcomes.find(o => o !== team1Outcome)
+      if (otherOutcome) {
+        return !!outcomeTokenMap.get(otherOutcome)
+      }
+      return false
     }
     return false
   })
@@ -143,14 +149,12 @@ export function FraudsCardStack({
         </p>
       </div>
 
-      {/* Fraud Markets - Small Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         {validFraudMarkets.map(({ market, type, team1, team2 }, index) => {
           const outcomes = parseOutcomes(market.outcomes)
           const outcomeTokenMap = getOutcomeTokenMap(market)
 
           if (type === 'lal-vs-fraud') {
-            // LAL vs fraud team - betting on LAL = shorting the fraud
             const lalOutcome = outcomes.find(outcome =>
               outcome.toLowerCase().includes('lal') ||
               outcome.toLowerCase().includes('los angeles') ||
@@ -162,7 +166,6 @@ export function FraudsCardStack({
             if (lalOutcome) {
               tokenId = outcomeTokenMap.get(lalOutcome) || null
             } else {
-              // Fallback: use Yes token (assuming Yes = LAL wins)
               const yesToken = market.tokens.find(t => t.outcome === 'Yes')
               if (yesToken) {
                 tokenId = yesToken.token_id
@@ -180,7 +183,7 @@ export function FraudsCardStack({
                 {tokenId && (
                   <button
                     onClick={() => {
-                      setOrderForm({ ...orderForm, tokenId, side: Side.BUY })
+                      setOrderForm({ ...orderForm, tokenId: tokenId!, side: Side.BUY })
                     }}
                     className="w-full text-xs bg-enemy-red text-white px-3 py-2 rounded font-medium uppercase hover:bg-enemy-red/90 transition-colors"
                   >
@@ -190,7 +193,6 @@ export function FraudsCardStack({
               </div>
             )
           } else if (type === 'fraud-vs-fraud' && team2) {
-            // Two fraud teams competing - can short either
             const team1Outcome = outcomes.find(o =>
               o.toLowerCase().includes(team1.code.toLowerCase())
             )
@@ -198,7 +200,6 @@ export function FraudsCardStack({
               o.toLowerCase().includes(team2.code.toLowerCase())
             )
 
-            // Get tokenIds for both options (betting on team2 wins = short team1, and vice versa)
             const tokenId1 = team1Outcome ? outcomeTokenMap.get(team2Outcome || '') : null
             const tokenId2 = team2Outcome ? outcomeTokenMap.get(team1Outcome || '') : null
 
@@ -214,7 +215,7 @@ export function FraudsCardStack({
                   {tokenId2 && (
                     <button
                       onClick={() => {
-                        setOrderForm({ ...orderForm, tokenId: tokenId2, side: Side.BUY })
+                        setOrderForm({ ...orderForm, tokenId: tokenId2!, side: Side.BUY })
                       }}
                       className="w-full text-xs bg-enemy-red text-white px-3 py-2 rounded font-medium uppercase hover:bg-enemy-red/90 transition-colors"
                     >
@@ -224,7 +225,7 @@ export function FraudsCardStack({
                   {tokenId1 && (
                     <button
                       onClick={() => {
-                        setOrderForm({ ...orderForm, tokenId: tokenId1, side: Side.BUY })
+                        setOrderForm({ ...orderForm, tokenId: tokenId1!, side: Side.BUY })
                       }}
                       className="w-full text-xs bg-enemy-red text-white px-3 py-2 rounded font-medium uppercase hover:bg-enemy-red/90 transition-colors"
                     >
@@ -232,6 +233,41 @@ export function FraudsCardStack({
                     </button>
                   )}
                 </div>
+              </div>
+            )
+          } else if (type === 'fraud-vs-others') {
+            const team1Outcome = outcomes.find(o =>
+              o.toLowerCase().includes(team1.code.toLowerCase())
+            )
+            
+            let otherOutcome: string | undefined
+            let tokenId: string | undefined
+            
+            if (team1Outcome) {
+              otherOutcome = outcomes.find(o => o !== team1Outcome)
+              if (otherOutcome) {
+                tokenId = outcomeTokenMap.get(otherOutcome)
+              }
+            }
+            
+            return (
+              <div key={`${market.id}-${index}`} className="bg-black/80 border border-enemy-red/30 rounded-lg p-4 hover:border-enemy-red/50 transition-colors">
+                <div className="mb-2">
+                  <p className="font-bold text-xs text-enemy-red uppercase">
+                    {otherOutcome ? `${otherOutcome} vs ${team1.code}` : `${team1.code} Match`}
+                  </p>
+                </div>
+                <p className="font-semibold text-white line-clamp-2 mb-3 text-sm">{market.question}</p>
+                {tokenId && (
+                  <button
+                    onClick={() => {
+                      setOrderForm({ ...orderForm, tokenId: tokenId!, side: Side.BUY })
+                    }}
+                    className="w-full text-xs bg-enemy-red text-white px-3 py-2 rounded font-medium uppercase hover:bg-enemy-red/90 transition-colors"
+                  >
+                    SHORT {team1.code}
+                  </button>
+                )}
               </div>
             )
           }

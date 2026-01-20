@@ -1,23 +1,80 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useAccount } from 'wagmi'
-import { fetchAllMarketsAction } from '../actions'
-import type { Market } from '../../lib/markets'
+import { useAccount, useWalletClient } from 'wagmi'
+import { fetchAllMarketsAction } from '../../lib/actions'
+import { getApiKey } from '../../lib/api'
+import { placeOrderWithApiKey } from '../../lib/orders'
+import { checkProxyWalletAction } from '../../lib/actions'
+import type { Market } from '../../types'
 import { parseOutcomes, filterMarketsByDescription, sortMarketsWithLALFirst, getOutcomeTokenMap, isLALMarket, getTokenIdForOutcome } from '../../lib/markets'
+import type { PlaceOrderParams } from '../../types'
 import { Side } from '../../types'
+import { CommandCenterModal } from '../../components/command-center-modal'
+import { ErrorDisplay } from '../../components/error-display'
 
 export default function KingCrowdPage() {
-  const { isConnected } = useAccount()
+  const { address, isConnected } = useAccount()
+  const { data: walletClient } = useWalletClient()
   const [markets, setMarkets] = useState<Market[]>([])
   const [selectedMarket, setSelectedMarket] = useState<Market | null>(null)
   const [marketsLoading, setMarketsLoading] = useState(false)
+  const [proxyAddress, setProxyAddress] = useState<string | null>(null)
+  const [mode, setMode] = useState<'proxy' | 'eoa'>('proxy')
+  const [apiKey, setApiKey] = useState<any>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [commandCenterOpen, setCommandCenterOpen] = useState(false)
+  const [commandCenterTheme, setCommandCenterTheme] = useState<'enemy-red' | 'lakers-gold'>('lakers-gold')
+  const [mounted, setMounted] = useState(false)
+  
+  // Order form state
+  const [orderForm, setOrderForm] = useState<PlaceOrderParams>({
+    tokenId: '',
+    side: Side.BUY,
+    price: 0.5,
+    size: 1,
+    tickSize: '0.01',
+    feeRateBps: 0,
+    nonce: 0,
+  })
 
   useEffect(() => {
-    if (isConnected) {
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (mounted && isConnected && address && walletClient) {
+      initialize()
+    } else if (mounted && isConnected) {
       loadMarkets()
     }
-  }, [isConnected])
+  }, [isConnected, address, walletClient, mounted])
+
+  async function initialize() {
+    if (!address) return
+    
+    try {
+      // Check for proxy
+      const proxyResult = await checkProxyWalletAction(address as `0x${string}`)
+      if (proxyResult.exists) {
+        setProxyAddress(proxyResult.address)
+        setMode('proxy')
+      } else {
+        setMode('eoa')
+      }
+
+      // Load API key
+      const key = await getApiKey()
+      setApiKey(key)
+
+      // Load markets
+      await loadMarkets()
+    } catch (err: any) {
+      console.error('Initialization failed:', err)
+      setError(err.message)
+    }
+  }
 
   async function loadMarkets() {
     setMarketsLoading(true)
@@ -46,10 +103,64 @@ export default function KingCrowdPage() {
   function handleOutcomeSelect(market: Market, outcome: string) {
     const tokenId = getTokenIdForOutcome(market, outcome)
     if (tokenId) {
-      // Could navigate to /glaze with token ID or show a message
-      console.log('Selected token ID:', tokenId)
+      const isLAL = isLALMarket(market)
+      setOrderForm({
+        ...orderForm,
+        tokenId: tokenId,
+        side: Side.BUY,
+      })
+      setCommandCenterTheme(isLAL ? 'lakers-gold' : 'enemy-red')
+      setCommandCenterOpen(true)
     }
   }
+
+  async function handlePlaceOrder() {
+    const accountType = mode === 'eoa' ? 'EOA' : 'PROXY'
+    
+    if (!orderForm.tokenId) {
+      setError('Token ID is required')
+      return
+    }
+
+    const tradingAddress = mode === 'proxy' && proxyAddress ? proxyAddress : address
+    if (!tradingAddress || !address || !walletClient) {
+      setError('Wallet not connected')
+      return
+    }
+
+    setLoading(true)
+    setError(null)
+    try {
+      const result = await placeOrderWithApiKey(
+        tradingAddress as `0x${string}`,
+        orderForm,
+        walletClient,
+        mode === 'eoa',
+      )
+      
+      if (result.success) {
+        setError(null)
+        setOrderForm({
+          tokenId: '',
+          side: Side.BUY,
+          price: 0.5,
+          size: 1,
+          tickSize: '0.01',
+          feeRateBps: 0,
+          nonce: 0,
+        })
+        setCommandCenterOpen(false)
+      } else {
+        setError('Failed to place order')
+      }
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (!mounted) return null
 
   if (!isConnected) {
     return (
@@ -69,6 +180,8 @@ export default function KingCrowdPage() {
   return (
     <div className="min-h-screen bg-black py-8">
       <div className="max-w-7xl mx-auto px-4">
+        <ErrorDisplay error={error} />
+        
         {/* Markets Section - King & Crowd */}
         <div className="mt-10">
           <div className="flex justify-between items-center mb-6">
@@ -160,22 +273,52 @@ export default function KingCrowdPage() {
                             )
                           })}
                         </div>
-                        {/* Show Yes/No token IDs explicitly for LAL markets */}
+                        {/* Show Yes/No token IDs explicitly for LAL markets with trade buttons */}
                         {isLAL && yesToken && noToken && (
                           <div className="mt-3 p-3 bg-lakers-gold/10 border border-lakers-gold/30 rounded text-xs">
                             <div className="font-black uppercase text-lakers-gold mb-2 tracking-tighter">TOKEN IDs:</div>
                             <div className="space-y-2">
-                              <div className="flex items-center justify-between">
-                                <div>
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex-1">
                                   <span className="font-bold text-gray-300">GLAZE:</span>{' '}
                                   <span className="font-mono text-lakers-gold text-xs">{yesToken.token_id.slice(0, 16)}...</span>
                                 </div>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setOrderForm({
+                                      ...orderForm,
+                                      tokenId: yesToken.token_id,
+                                      side: Side.BUY,
+                                    })
+                                    setCommandCenterTheme('lakers-gold')
+                                    setCommandCenterOpen(true)
+                                  }}
+                                  className="px-2 py-1 bg-lakers-gold text-black text-xs font-bold uppercase rounded hover:bg-lakers-gold/90 transition-colors"
+                                >
+                                  TRADE
+                                </button>
                               </div>
-                              <div className="flex items-center justify-between">
-                                <div>
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex-1">
                                   <span className="font-bold text-gray-300">HATE:</span>{' '}
                                   <span className="font-mono text-enemy-red text-xs">{noToken.token_id.slice(0, 16)}...</span>
                                 </div>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setOrderForm({
+                                      ...orderForm,
+                                      tokenId: noToken.token_id,
+                                      side: Side.BUY,
+                                    })
+                                    setCommandCenterTheme('enemy-red')
+                                    setCommandCenterOpen(true)
+                                  }}
+                                  className="px-2 py-1 bg-enemy-red text-white text-xs font-bold uppercase rounded hover:bg-enemy-red/90 transition-colors"
+                                >
+                                  TRADE
+                                </button>
                               </div>
                             </div>
                           </div>
@@ -194,6 +337,27 @@ export default function KingCrowdPage() {
           )}
         </div>
       </div>
+
+      {/* Command Center Modal */}
+      <CommandCenterModal
+        isOpen={commandCenterOpen}
+        onClose={() => {
+          setCommandCenterOpen(false)
+          setOrderForm({ ...orderForm, tokenId: '' })
+        }}
+        orderForm={orderForm}
+        setOrderForm={setOrderForm}
+        onPlaceOrder={handlePlaceOrder}
+        apiKey={apiKey}
+        loading={loading}
+        theme={commandCenterTheme}
+        isConnected={isConnected}
+        onApiKeyCreated={async (newApiKey) => {
+          setApiKey(newApiKey)
+          const key = await getApiKey()
+          setApiKey(key)
+        }}
+      />
     </div>
   )
 }
