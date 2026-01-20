@@ -59,8 +59,9 @@ export async function getOpenOrdersAction(
 ) {
   try {
     return await getOpenOrders(address, apiKey, eoaAddress, accountType, page, limit)
-  } catch (error) {
-    console.error('Error fetching open orders (server action):', error)
+  } catch (error: any) {
+    const errorMessage = error?.message || 'Unknown error'
+    console.error(`Error fetching open orders (server action): ${errorMessage}`)
     return { orders: [], total: 0, page, limit }
   }
 }
@@ -101,8 +102,9 @@ export async function getPositionsAction(
 ): Promise<Position[]> {
   try {
     return await getPositions(address, apiKey, markets)
-  } catch (error) {
-    console.error('Error fetching positions (server action):', error)
+  } catch (error: any) {
+    const errorMessage = error?.message || 'Unknown error'
+    console.error(`Error fetching positions (server action): ${errorMessage}`)
     return []
   }
 }
