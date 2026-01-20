@@ -136,7 +136,7 @@ export default function BattlefieldPage() {
       const tradingAddress = useMode === 'proxy' && useProxyAddress ? useProxyAddress : address
       
       if (useApiKey) {
-          const pos = await getPositionsAction(tradingAddress as `0x${string}`, useApiKey, marketsToUse)
+          const pos = await getPositionsAction(tradingAddress as `0x${string}`, useApiKey)
           setPositions(pos)
           
           // Fetch PnL data

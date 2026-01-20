@@ -98,9 +98,10 @@ export async function fetchAllMarketsAction(active: boolean = true): Promise<Mar
 export async function getPositionsAction(
   address: `0x${string}`,
   apiKey: ApiKeyCreds,
-  markets: Market[],
 ): Promise<Position[]> {
   try {
+    // Fetch markets internally to avoid passing large payload from client (avoids 1MB limit)
+    const markets = await fetchAllMarkets(false)
     return await getPositions(address, apiKey, markets)
   } catch (error: any) {
     const errorMessage = error?.message || 'Unknown error'
