@@ -278,20 +278,8 @@ export default function BattlefieldPage() {
               <span className="text-sm text-gray-500 ml-2">(Est.)</span>
             </p>
           </div>
-          <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-lg p-6">
-            <div className="flex justify-between items-start mb-2">
-              <h3 className="text-gray-400 text-sm uppercase tracking-wider">Total PnL</h3>
-              {pnlData && (
-                <div className="flex gap-2">
-                  <div className={`text-[10px] px-2 py-0.5 rounded border ${pnlData.realizedPnl >= 0 ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}>
-                    REALIZED: ${pnlData.realizedPnl.toFixed(2)}
-                  </div>
-                  <div className={`text-[10px] px-2 py-0.5 rounded border ${pnlData.unrealizedPnl >= 0 ? 'bg-blue-500/10 border-blue-500/30 text-blue-400' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}>
-                    UNREALIZED: ${pnlData.unrealizedPnl.toFixed(2)}
-                  </div>
-                </div>
-              )}
-            </div>
+          <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-lg p-6 flex flex-col justify-center">
+            <h3 className="text-gray-400 text-sm uppercase tracking-wider mb-2">Total PnL</h3>
             <p className={`text-4xl font-black font-mono ${displayPnL >= 0 ? 'text-green-500' : 'text-enemy-red'}`}>
               {displayPnL >= 0 ? '+' : ''}${Math.abs(displayPnL).toFixed(2)}
             </p>
