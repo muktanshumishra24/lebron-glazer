@@ -3,6 +3,11 @@ const webpack = require('webpack')
 
 const nextConfig = {
   reactStrictMode: true,
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '4mb',
+    },
+  },
   // Webpack configuration for handling Node.js modules
   webpack: (config, { isServer }) => {
     if (isServer) {
